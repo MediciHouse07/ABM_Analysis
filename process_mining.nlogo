@@ -32,7 +32,12 @@ to setup-patches
   ask patches with [(pxcor > -15 and pxcor < -10) and (pycor > -2 and pycor < 3)][ set pcolor red set pname "Hungary" ]
   ask patches with [(pxcor > -3 and pxcor < 2) and (pycor > 7 and pycor < 12)][ set pcolor blue set pname "Food1" ]
   ask patches with [(pxcor > -3 and pxcor < 2) and (pycor > -10 and pycor < -5)][ set pcolor blue set pname "Food2" ]
-  ask patches with [(pxcor > 10 and pxcor < 15) and (pycor > -2 and pycor < 3)][ set pcolor grey set pname "Full" ]
+  ;ask patches with [(pxcor > 10 and pxcor < 15) and (pycor > -2 and pycor < 3)][ set pcolor grey set pname "Full" ]
+  
+  ask patches with [(pxcor > 10 and pxcor < 15) and (pycor > -2 and pycor < 3) and
+                   (pxcor - 10)<(pycor + 2)
+                   ]
+                   [ set pcolor grey set pname "Full" ]
 
   setup-label
 
