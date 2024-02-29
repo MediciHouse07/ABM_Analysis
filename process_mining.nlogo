@@ -21,22 +21,73 @@ to go
 
 end
 
+;to move
+;  if not any? patches in-cone 1 180 with [pname = "boundary1" or pname = "boundary2"] [
+;    fd 1
+;  ] if any? patches in-cone 1 180 with [pname = "boundary1" or pname = "boundary2"] [
+;    handle-obstacle
+;  ]
+;end
+;
+;to handle-obstacle
+;  ; Try turning left and then right to find an alternative path
+;  ifelse not any? patches in-cone 1 90 with [pname = "disable"] [
+;    rt 90 ; Turn right
+;  ] [
+;    lt 180 ; If turning right doesn't work, turn left
+;  ]
+;end
+
 to move
-  fd 1
+  if not any? patches in-cone 2 180 with [pname = "boundary1" or pname = "boundary2"] [
+    fd 1
+  ] if any? patches in-cone 2 180 with [pname = "boundary1" or pname = "boundary2"] [
+;    ifelse destination-patch != nobody [
+;      ; Store the original heading
+;      let original-heading heading
+      handle-obstacle
+;      ; Restore the original heading
+;      set heading original-heading
+;    ] [
+;      ; No destination set, so just stop
+;      set moving? false
+;    ]
+  ]
+end
+
+to handle-obstacle
+  ; Try turning left and then right to find an alternative path
+  ifelse not any? patches in-cone 1 90 with [pname = "boundary1" or pname = "boundary2"] [
+    rt 90 ; Turn right
+  ] [
+    lt 180 ; If turning right doesn't work, turn left
+  ]
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;; SETUP procedures ;;;;;;;;;;;;;;;;;
 
 to setup-patches
-  ask patches [ set pcolor 4 ]
+  ; boundary can't be crossed
+  ask patches with [ (pxcor <= -16 or pxcor >= 16) or (pycor <= -14 or pycor >= 14 )]
+  [
+    set pcolor 4 
+    set pname "boundary1"
+  ]
+  
+  ;
+  
+  ask patches with [(pycor >= pxcor - 1) and (pycor <= pxcor + 3 ) and (pxcor >= -4) and (pxcor <= 4)]
+  [
+    set pcolor 4
+    set pname "boundary2"
+  ]
+  
   ask patches with [(pxcor > -15 and pxcor < -10) and (pycor > -2 and pycor < 3)][ set pcolor red set pname "Hungary" ]
   ask patches with [(pxcor > -3 and pxcor < 2) and (pycor > 7 and pycor < 12)][ set pcolor blue set pname "Food1" ]
   ask patches with [(pxcor > -3 and pxcor < 2) and (pycor > -10 and pycor < -5)][ set pcolor blue set pname "Food2" ]
   ;ask patches with [(pxcor > 10 and pxcor < 15) and (pycor > -2 and pycor < 3)][ set pcolor grey set pname "Full" ]
   
-  ask patches with [(pxcor > 10 and pxcor < 15) and (pycor > -2 and pycor < 3) and
-                   (pxcor - 10)<(pycor + 2)
-                   ]
+  ask patches with [(pxcor > 10 and pxcor < 15) and (pycor > -2 and pycor < 3) ]
                    [ set pcolor grey set pname "Full" ]
 
   setup-label
@@ -76,7 +127,7 @@ end
 
 to send-order-to-destination [ d ]
   let dest one-of patches with [pname = d]
-  set heading towards dest
+;  set heading towards dest
   set destination-patch dest
   ;set moving_q true
   ;set state_order "moving"
