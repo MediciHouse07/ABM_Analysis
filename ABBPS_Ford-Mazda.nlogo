@@ -18,8 +18,8 @@ workers-own [
   service-time      ;  a variable to register the time spent in the service
 ]
 
-orders-own [        ; order to be fulfilled and escaped
-  state_order       ; "waiting-for-worker","service", "moving", "delay"
+orders-own [        ; order to be fulfilled and escaped ;state-order time-limit working-with duration destination-patch my_invoice_arrived? my_copy_order_arrived? order-arrival-time
+  state-order       ; "waiting-for-worker","service", "moving", "delay"
   time-limit        ; limit of time to conclude a task/start the next activity
   working-with      ; the worker being workting with
 
@@ -28,7 +28,7 @@ orders-own [        ; order to be fulfilled and escaped
   destination-patch ; the patch where the order has to move
 
   my_invoice_arrived?     ; a variable to check the arrival of an invoice
-  my_copy_order_arrived_q  ; to check the arrival of a copy of the order
+  my_copy_order_arrived?  ; to check the arrival of a copy of the order
 
   order-arrival-time ; KPI variable
 ]
@@ -56,7 +56,7 @@ globals [
   avgWorkedTime
 ]
 
-turtles-own [ moving_q ]  ; every turtle
+turtles-own [ moving? ]  ; every turtle
 patches-own [ pname ]    ; the name of the patch (PO,V,R,AP,IS)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -84,7 +84,6 @@ to go
   check-moving            ; turtle moving on the screen
   check-time              ; check if order or worker end their period
   pass-time               ; the passage of time
-
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -122,7 +121,7 @@ to setup-hr
       fd random-float 1
       ; initialise variables
       set state-worker "waiting"  ;
-      set moving_q false           ; workers never move, just change their color according to their state
+      set moving? false           ; workers never move, just change their color according to their state
       set service-time 0
       set duration -1
     ]
@@ -152,12 +151,12 @@ to arrivalOfOrders  ; a certain amount of orders arrive every tot minutes, waiti
         set size 0.6 set shape "dot"
         move-to one-of patches with [ pname = "PO" ]
 
-        set moving_q false
-        set state_order "waiting-for-worker"  ; the new order has an initial state "waiting-for-worker"
+        set moving? false
+        set state-order "waiting-for-worker"  ; the new order has an initial state "waiting-for-worker"
 
         set order-arrival-time ticks      ; set the order-arrival-time
 
-        set my_copy_order_arrived_q false  ;
+        set my_copy_order_arrived? false  ;
         set my_invoice_arrived? false     ;
       ]
    ]
@@ -165,11 +164,12 @@ end
 
 to check-workers  ; worker  "waiting" and not moving: agent starts working on the waiting orders
   ifelse working-time = "wt-morning" or working-time = "wt-afternoon" [
-    if any? workers with [state-worker = "waiting"] and any? orders with [state_order = "waiting-for-worker"]
+    if any? workers with [state-worker = "waiting"] and any? orders with [state-order = "waiting-for-worker"]
     [
       ask workers with [state-worker = "waiting" ]
       [
-        let orders-waiting orders with [state_order = "waiting-for-worker"]
+        output_csv ; for data recording
+        let orders-waiting orders with [state-order = "waiting-for-worker"]
         if any? orders-waiting
           [
             let select-an-order one-of orders-waiting  ;; select an order to serve
@@ -180,7 +180,8 @@ to check-workers  ; worker  "waiting" and not moving: agent starts working on th
 
             ask select-an-order
               [
-                set state_order "service"
+                output_csv ; for data recording
+                set state-order "service"
                 set working-with myself
 
                 if [pname] of patch-here = "PO" ;; emploiees in (P) Ford office send a copy of the order to (AP)
@@ -189,7 +190,7 @@ to check-workers  ; worker  "waiting" and not moving: agent starts working on th
                       [
                         set shape "dot" set size 0.5
                         set order-number myself
-                        set moving_q true
+                        set moving? true
 
                         ; define the destination of the agent/copy_order
                         let dest ""
@@ -233,6 +234,7 @@ to-report compute-duration [a]
   let d 0 ; duration based on the use-case and the pname of state
   ask a
     [
+      output_csv ; for data recording
       if [pname] of working-with  = "PO"
         [
           if use-case = "Ford" [ set d 15 + random (31) ] ; 15-45 minutes for a worker to prepare an order + send order to vendor + prepare/send a copy of order to AP
@@ -254,35 +256,39 @@ to-report compute-duration [a]
 end
 
 to check-moving
-  ask turtles with [moving_q = True]
+  ask turtles with [moving? = True]
     [
-      output_csv
+      output_csv ; for data recording
       ifelse patch-here != destination-patch
         [ fd random-float 1 ]
         [
-          set moving_q false
+          set moving? false
           if breed = copy_orders
             [
-              if use-case = "Ford" [ ask order-number [ set my_copy_order_arrived_q true ]]
+              if use-case = "Ford" [ ask order-number [
+              output_csv ; for data recording
+              set my_copy_order_arrived? true ]]
               die
             ]
           if breed = invoices
             [
-              if use-case = "Ford" [ ask order-number [ set my_invoice_arrived? true set shape "box"] ]
+              if use-case = "Ford" [ ask order-number [
+              output_csv ; for data recording
+              set my_invoice_arrived? true set shape "box"] ]
               die
             ]
           if breed = orders
             [
-              set state_order "waiting-for-worker"
+              set state-order "waiting-for-worker"
               if [pname] of patch-here = "V"
                 [
-                  set state_order "delay"      ; from 2 hours to ... hours delay  [120 - 720]
+                  set state-order "delay"      ; from 2 hours to ... hours delay  [120 - 720]
                   set duration 10 + random 110 ; time-limit: ticks 10m up to 2h
 
                   hatch-invoices 1
                     [
                       set order-number myself
-                      set moving_q true
+                      set moving? true
                       set size 0.6 set shape "star"
                       let dest one-of patches with [pname = "AP"]
                       set heading towards dest
@@ -295,45 +301,52 @@ to check-moving
 end
 
 to check-time
+
   ; order and worker become not in service after the amount of time working
-  if any? orders with [ state_order = "delay" and duration = 0 ]
+  if any? orders with [ state-order = "delay" and duration = 0 ]
     [
-      ask orders with [ state_order = "delay" and duration = 0 ]
+      ask orders with [ state-order = "delay" and duration = 0 ]
         [
+          output_csv ; for data recording
           compute-next-state [pname] of patch-here
-          set state_order "moving"
+          set state-order "moving"
         ]
      ]
 
-  if any? orders with [ state_order = "delay" and duration > 0 ]
-    [ ask orders with [ state_order = "delay" and duration > 0 ] [ set duration duration - 1 ] ]
+  if any? orders with [ state-order = "delay" and duration > 0 ]
+    [ ask orders with [ state-order = "delay" and duration > 0 ] [
+      output_csv ; for data recording
+      set duration duration - 1 ] ]
 
   if any? workers with [ state-worker = "service" and duration = 0]
     [
       ask workers with [state-worker = "service" and duration = 0]
-        [
+        [ output_csv ; for data recording
           ifelse working-time = "wt-morning" or working-time = "wt-afternoon"
             [ set state-worker "waiting" set color green ]
             [ set state-worker "not-working-time" set color gray ]
 
           ask working-with
             [
+              output_csv ; for data recording
               compute-next-state [pname] of patch-here
-              set state_order "moving"
+              set state-order "moving"
             ]
         ]
     ]
 
   if any? workers with [ state-worker = "service" and duration > 0]
-    [ ask workers with [state-worker = "service" and duration > 0] [ set duration duration - 1 ] ]
+    [ ask workers with [state-worker = "service" and duration > 0] [
+      output_csv ; for data recording
+      set duration duration - 1 ] ]
 end
 
 to send-order-to-destination [ d ]
   let dest one-of patches with [pname = d]
   set heading towards dest
   set destination-patch dest
-  set moving_q true
-  set state_order "moving"
+  set moving? true
+  set state-order "moving"
 end
 
 to computeCycleTime [a]
@@ -349,7 +362,7 @@ to compute-next-state [s]
   if s = "V"  [ send-order-to-destination  "R"]
   if s = "R"
     [
-      set state_order "waiting-for-worker"
+      set state-order "waiting-for-worker"
       send-order-to-destination "AP"
     ]
 
@@ -357,7 +370,7 @@ to compute-next-state [s]
     [
       ifelse use-case = "Ford"
         [
-          if my_invoice_arrived? and my_copy_order_arrived_q
+          if my_invoice_arrived? and my_copy_order_arrived?
             [ computeCycleTime ticks - order-arrival-time
               set count-payement count-payement + 1
               die
@@ -373,9 +386,13 @@ end
 
 to restore-workers-service
    if any? workers with [state-worker =  "not-working-time"][
-      ask workers with [state-worker =  "not-working-time"][set state-worker "waiting" ]]
+      ask workers with [state-worker =  "not-working-time"][
+      output_csv ; for data recording
+      set state-worker "waiting" ]]
     if any? workers with [duration > 0 ][
-      ask workers with [duration > 0 ][set state-worker "service" ]]
+      ask workers with [duration > 0 ][
+      output_csv ; for data recording
+      set state-worker "service" ]]
 end
 
 to pass-time
@@ -390,7 +407,9 @@ to pass-time
   if hour = 13 and minute = 0
     [
       set working-time "lunch-time"
-      ask workers [set state-worker "not-working-time"]
+      ask workers [
+        output_csv ; for data recording
+        set state-worker "not-working-time"]
     ]
 
   ;; end lunch time - start working at 14
@@ -403,7 +422,9 @@ to pass-time
   if hour = 18 and minute = 0
     [
       set working-time "night"
-      ask workers [set state-worker "not-working-time"]
+      ask workers [
+        output_csv ; for data recording
+        set state-worker "not-working-time"]
     ]
 
   ; increment time
@@ -413,11 +434,11 @@ end
 
 to setup_csv
   file-open "process_temp.csv"
-  file-print csv:to-row (list "ticks" "breed" "moving_q" "state_order" "working-with" "who" "duration" "my_invoice_arrived?" "my_copy_order_arrived_q" "order-arrival-time")
+  file-print csv:to-row (list "ticks" "breed" "who" "state-order" "time-limit" "working-with" "duration" "destination-patch" "my_invoice_arrived?" "my_copy_order_arrived?" "order-arrival-time" "working-time")
   file-close
   file-delete "process_temp.csv"
   file-open "process_temp.csv"
-  file-print csv:to-row (list "ticks" "breed" "moving_q" "state_order" "working-with" "who" "duration" "my_invoice_arrived?" "my_copy_order_arrived_q" "order-arrival-time")
+  file-print csv:to-row (list "ticks" "breed" "who" "state-order" "time-limit" "working-with" "duration" "destination-patch" "my_invoice_arrived?" "my_copy_order_arrived?" "order-arrival-time" "working-time")
   file-close
 end
 
@@ -425,7 +446,7 @@ to output_csv
   if breed = orders
   [
     file-open "process_temp.csv"
-    file-print csv:to-row (list ticks breed moving_q state_order working-with my_invoice_arrived?)
+    file-print csv:to-row (list ticks breed who state-order time-limit working-with duration destination-patch my_invoice_arrived? my_copy_order_arrived? order-arrival-time working-time)
     file-close
   ]
 
@@ -565,9 +586,9 @@ true
 true
 "" ""
 PENS
-"SERVICE" 1.0 0 -8053223 true "" "if ticks mod 60 = 0[plot count orders with [state_order = \"service\"]]"
-"WAITING" 1.0 0 -5509967 true "" "if ticks mod 60 = 0[plot count orders with [state_order = \"waiting-for-worker\"]]"
-"DELAY" 1.0 0 -7500403 true "" "if ticks mod 60 = 0[plot count orders with [state_order = \"delay\"]]"
+"SERVICE" 1.0 0 -8053223 true "" "if ticks mod 60 = 0[plot count orders with [state-order = \"service\"]]"
+"WAITING" 1.0 0 -5509967 true "" "if ticks mod 60 = 0[plot count orders with [state-order = \"waiting-for-worker\"]]"
+"DELAY" 1.0 0 -7500403 true "" "if ticks mod 60 = 0[plot count orders with [state-order = \"delay\"]]"
 
 MONITOR
 64
@@ -575,7 +596,7 @@ MONITOR
 116
 310
 Waiting
-count orders with [ state_order = \"waiting-for-worker\"]
+count orders with [ state-order = \"waiting-for-worker\"]
 17
 1
 11
@@ -683,7 +704,7 @@ MONITOR
 167
 310
 Delay
-count orders with [ state_order = \"delay\"]
+count orders with [ state-order = \"delay\"]
 17
 1
 11
@@ -716,7 +737,7 @@ MONITOR
 634
 205
 In transit
-count orders with [state_order = \"moving\"]
+count orders with [state-order = \"moving\"]
 17
 1
 11
@@ -747,7 +768,7 @@ MONITOR
 63
 310
 Served
-count orders with [state_order = \"service\"]
+count orders with [state-order = \"service\"]
 17
 1
 11
